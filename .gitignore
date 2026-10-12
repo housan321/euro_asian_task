@@ -1,0 +1,29 @@
+# WorkBuddy
+.workbuddy/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# CSV database (keep template only)
+data/ah_matches.csv
+
+# 抓取到的单场 JSON（按日期分目录，体积大，不入库）
+# 如需把某天的数据一起提交，可去掉这一行
+data/2026-*/

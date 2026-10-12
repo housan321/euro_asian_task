@@ -1,0 +1,55 @@
+name: 赛前分析调度
+
+# 说明：
+#   GitHub Actions 单 job 最长 6 小时，而一个足球日横跨约 19 小时，
+#   无法用「11:00 拉列表后等到各场 T-30 分钟」，所以采用「定时轮询」：
+#   每 10 分钟跑一次 scheduler.py，它会抓当天/明天的赛程，
+#   找出「距开赛 30 分钟」的比赛并分析。
+on:
+  schedule:
+    - cron: '*/10 * * * *'      # 每 10 分钟（UTC；覆盖所有时段的开赛时间）
+  workflow_dispatch:             # 支持手动触发（也用于防止 60 天无活动被停用）
+
+permissions:
+  contents: write                # 需要提交 ea_matches.csv 与状态文件
+
+# 同一时间只跑一个，避免并发写 CSV 冲突
+concurrency:
+  group: scheduler
+  cancel-in-progress: false
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装依赖
+        run: pip install requests
+
+      - name: 运行调度器
+        run: python scheduler.py
+
+      - name: 提交分析结果
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f data/ea_matches.csv data/scheduler_state.json data/schedule_cache.json
+          if git diff --cached --quiet; then
+            echo "无变化，跳过提交"
+          else
+            git commit -m "chore: 定时分析结果 $(date -u +'%Y-%m-%d %H:%M') UTC"
+            git push
+          fi
