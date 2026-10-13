@@ -14,13 +14,15 @@ scheduler.py — 定时调度器（配合 GitHub Actions 轮询）
 设计说明：
   - GitHub Actions 单 job 最长 6 小时，足球日却横跨约 19 小时，
     所以无法「11点拉列表后一直等到各场 T-30 分钟」，只能靠定时轮询。
-  - 建议 cron 每 10 分钟一次；TOLERANCE_MIN 设为 10 用于抵消 cron 延迟。
-  - 去重靠 data/scheduler_state.json（每天重置）。
+  - GitHub 的 cron 本身不可靠（会延迟/跳过/限流），所以每次运行**内部循环
+    RUN_MINUTES 分钟**、每 CHECK_INTERVAL 秒检查一次，一次触发就能覆盖一段时间。
+  - 去重靠 data/scheduler_state.json（键为「比赛ID@时点」，每天重置）。
 """
 
 import json
 import os
 import sys
+import time
 import shutil
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -50,6 +52,11 @@ CACHE_PATH = os.path.join(BASE_DIR, 'data', 'schedule_cache.json')
 # 赛程列表的刷新时间点（北京时间，小时）。jihai8 一般每天 11:00 更新当天赛程，
 # 下午 18:00 再刷新一次以防变动。cron 每 10 分钟跑，会在这些点之后不久刷新缓存。
 REFRESH_HOURS = (11, 18)
+
+# 单次运行的内部循环时长（分钟）。GitHub 的 cron 不可靠（会延迟/跳过/限流），
+# 让一次运行持续覆盖一段时间，就不会因为 cron 稀疏而漏掉到点的比赛。
+RUN_MINUTES = 50
+CHECK_INTERVAL = 300    # 循环内每次检查的间隔（秒）
 # ================================================
 
 
@@ -157,7 +164,8 @@ def analyze_one(mid, label=''):
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def main():
+def run_once():
+    """一趟检查：读状态 → 找到点比赛 → 分析 → 保存状态。返回本次分析的数量。"""
     now = datetime.now(S._SH_TZ)
     today = now.strftime('%Y-%m-%d')
 
@@ -165,18 +173,18 @@ def main():
     state = load_state()
     if state.get('date') != today:
         state = {'date': today, 'analyzed': []}
-    analyzed = set(state.get('analyzed', []))
+    done = set(state.get('analyzed', []))
 
-    # 2. 比赛列表
+    # 2. 比赛列表（走缓存）
     matches = collect_matches()
 
     # 3. 找出到点的比赛
-    due = find_due(matches, analyzed, now)
+    due = find_due(matches, done, now)
 
     if not due:
-        print(f"[{now:%Y-%m-%d %H:%M}] 无到点比赛（候选 {len(matches)} 场，今日已分析 {len(analyzed)} 场）")
+        print(f"[{now:%Y-%m-%d %H:%M}] 无到点比赛（候选 {len(matches)} 场，今日已分析 {len(done)} 项）")
         save_state(state)
-        return
+        return 0
 
     print(f"[{now:%Y-%m-%d %H:%M}] 到点 {len(due)} 项：")
     for m, label, mins in due:
@@ -192,16 +200,37 @@ def main():
         print('=' * 60)
         try:
             if analyze_one(mid, label):
-                analyzed.add(f'{mid}@{label}')
+                done.add(f'{mid}@{label}')
                 ok += 1
                 print(f"  ✅ 已追加到 ea_matches.csv（notes={label}）\n")
         except Exception as e:
             print(f"  ❌ {mid}: {e}\n")
 
     # 4. 保存状态
-    state['analyzed'] = sorted(analyzed)
+    state['analyzed'] = sorted(done)
     save_state(state)
-    print(f"完成：本次分析 {ok}/{len(due)} 项，今日累计 {len(analyzed)} 项")
+    print(f"本轮完成：分析 {ok}/{len(due)} 项，今日累计 {len(done)} 项")
+    return ok
+
+
+def main():
+    """内部循环 RUN_MINUTES 分钟，每 CHECK_INTERVAL 秒检查一次。
+    这样即使 GitHub 的 cron 触发稀疏/延迟，一次运行也能覆盖一段时间的比赛。"""
+    end = time.time() + RUN_MINUTES * 60
+    total = 0
+    round_no = 0
+    print(f"=== 调度器启动：循环 {RUN_MINUTES} 分钟，每 {CHECK_INTERVAL}s 检查一次 ===")
+    while True:
+        round_no += 1
+        print(f"\n--- 第 {round_no} 次检查 ---")
+        try:
+            total += run_once()
+        except Exception as e:
+            print(f"  ❌ 本轮出错: {e}")
+        if time.time() >= end:
+            break
+        time.sleep(CHECK_INTERVAL)
+    print(f"\n=== 运行结束：共 {round_no} 次检查，累计分析 {total} 项 ===")
 
 
 if __name__ == '__main__':
