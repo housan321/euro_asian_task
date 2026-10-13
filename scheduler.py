@@ -46,17 +46,22 @@ from euro_asian_task import analyze_euro_asian, generate_euro_asian_report, appe
 #   T-30 : 开赛前 30 分钟（赛前盘）
 #   T+2  : 开赛 2 分钟后（此时 jihai8 页面已冻结为「收盘盘」）
 WINDOWS = [(30, 'T-30'), (-2, 'T+2')]
-TOLERANCE_MIN = 10      # 容差（分钟），抵消 cron 延迟；窗口 = [目标-TOL, 目标+2]
+# 容差（分钟），窗口 = [目标-TOL, 目标+2]。
+# 须 >= 外部定时器的触发间隔，否则窗口可能被"跳过"。
+# 触发间隔 15 分钟 → 窗口取 16 分钟宽（14~32）以保证必命中。
+TOLERANCE_MIN = 14
 STATE_PATH = os.path.join(BASE_DIR, 'data', 'scheduler_state.json')
 CACHE_PATH = os.path.join(BASE_DIR, 'data', 'schedule_cache.json')
 # 赛程列表的刷新时间点（北京时间，小时）。jihai8 一般每天 11:00 更新当天赛程，
 # 下午 18:00 再刷新一次以防变动。cron 每 10 分钟跑，会在这些点之后不久刷新缓存。
 REFRESH_HOURS = (11, 18)
 
-# 单次运行的内部循环时长（分钟）。GitHub 的 cron 不可靠（会延迟/跳过/限流），
-# 让一次运行持续覆盖一段时间，就不会因为 cron 稀疏而漏掉到点的比赛。
-RUN_MINUTES = 50
-CHECK_INTERVAL = 300    # 循环内每次检查的间隔（秒）
+# 单次运行的内部循环时长（分钟）。设为 0 = 不做循环，每次触发只检查一轮，
+# 触发频率完全交给外部定时器（cron-job.org，每 15 分钟）。
+# 这样 runner 占用最少（每次约 1 分钟）。
+# 若想要「一次运行覆盖更久」（应对触发不稳），可改成略小于触发间隔的值，如 14。
+RUN_MINUTES = 0
+CHECK_INTERVAL = 300    # 循环内每次检查的间隔（秒），仅 RUN_MINUTES>0 时生效
 # ================================================
 
 
@@ -214,12 +219,16 @@ def run_once():
 
 
 def main():
-    """内部循环 RUN_MINUTES 分钟，每 CHECK_INTERVAL 秒检查一次。
-    这样即使 GitHub 的 cron 触发稀疏/延迟，一次运行也能覆盖一段时间的比赛。"""
-    end = time.time() + RUN_MINUTES * 60
+    """RUN_MINUTES > 0 时内部循环该时长、每 CHECK_INTERVAL 秒检查一次；
+    RUN_MINUTES = 0 时只检查一轮就退出（触发频率交给外部定时器）。"""
+    run_loop = bool(RUN_MINUTES and RUN_MINUTES > 0)
+    end = time.time() + RUN_MINUTES * 60 if run_loop else 0
     total = 0
     round_no = 0
-    print(f"=== 调度器启动：循环 {RUN_MINUTES} 分钟，每 {CHECK_INTERVAL}s 检查一次 ===")
+    if run_loop:
+        print(f"=== 调度器启动：内部循环 {RUN_MINUTES} 分钟，每 {CHECK_INTERVAL}s 检查一次 ===")
+    else:
+        print("=== 调度器启动：单次检查（触发频率由外部定时器决定）===")
     while True:
         round_no += 1
         print(f"\n--- 第 {round_no} 次检查 ---")
@@ -227,7 +236,7 @@ def main():
             total += run_once()
         except Exception as e:
             print(f"  ❌ 本轮出错: {e}")
-        if time.time() >= end:
+        if not run_loop or time.time() >= end:
             break
         time.sleep(CHECK_INTERVAL)
     print(f"\n=== 运行结束：共 {round_no} 次检查，累计分析 {total} 项 ===")
