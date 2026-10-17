@@ -13,7 +13,7 @@ scheduler.py — 定时调度器（配合 GitHub Actions 轮询）
 
 设计说明：
   - GitHub Actions 单 job 最长 6 小时，足球日却横跨约 19 小时，
-    所以无法「11点拉列表后一直等到各场 T-30 分钟」，只能靠定时轮询。
+    所以无法「11点拉列表后一直等到各场 T-15 分钟」，只能靠定时轮询。
   - GitHub 的 cron 本身不可靠（会延迟/跳过/限流），所以每次运行**内部循环
     RUN_MINUTES 分钟**、每 CHECK_INTERVAL 秒检查一次，一次触发就能覆盖一段时间。
   - 去重靠 data/scheduler_state.json（键为「比赛ID@时点」，每天重置）。
