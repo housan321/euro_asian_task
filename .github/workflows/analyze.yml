@@ -7,7 +7,7 @@ name: 赛前分析调度
 #   每场比赛在 T-10（赛前 10 分钟）和 T+5（开赛后 5 分钟，收盘盘）各分析一次。
 on:
   schedule:
-    - cron: '*/10 * * * *'      # 每 10 分钟（UTC；覆盖所有时段的开赛时间）
+    - cron: '*/5 * * * *'       # 每 5 分钟（UTC；与 TOLERANCE_MIN=4 的窗口匹配）
   workflow_dispatch:             # 支持手动触发（也用于防止 60 天无活动被停用）
 
 permissions:

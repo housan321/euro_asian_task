@@ -48,10 +48,10 @@ from euro_asian_task import analyze_euro_asian, generate_euro_asian_report, appe
 WINDOWS = [(10, 'T-10'), (-5, 'T+5')]
 # 容差（分钟），窗口 = [目标-TOL, 目标+2]，宽度 = TOL + 2。
 # 窗口宽度必须 >= 外部定时器的触发间隔，否则可能被"跳过"而漏掉。
-# 触发间隔 10 分钟 → 取 TOL=8（窗口宽 10 分钟）：
-#   T-10 → [2, 12] 分钟（始终在开赛前 ✓）
-#   T+5  → [-13, -3] 分钟
-TOLERANCE_MIN = 8
+# 触发间隔 5 分钟 → 取 TOL=4（窗口宽 6 分钟），分析时点贴近目标：
+#   T-10 → [6, 12] 分钟（开赛前 6~12 分钟，理想区间 ✓）
+#   T+5  → [-9, -3] 分钟（开赛 3~9 分钟后）
+TOLERANCE_MIN = 4
 STATE_PATH = os.path.join(BASE_DIR, 'data', 'scheduler_state.json')
 CACHE_PATH = os.path.join(BASE_DIR, 'data', 'schedule_cache.json')
 # 赛程列表的刷新时间点（北京时间，小时）。jihai8 一般每天 11:00 更新当天赛程，
