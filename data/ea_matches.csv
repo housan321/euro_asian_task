@@ -1,2 +1,3 @@
 ﻿id,date,league,home_team,away_team,handicap_consensus,asian_direction,euro_direction,final_direction,asian_stars,euro_stars,final_stars,rules_triggered,double_pick,ah_recommendation,actual_result,actual_score,ah_result,notes
 R3109627,2026-11-14 20:00,国际友谊,中国,马来西亚,0.25,客,主,客不败,5.0,3,2.5,"Rule 19, Rule 21, Rule 11, Rule 6, Rule 14",客不败,观望 ⭐⭐½（2.5星）,,,,
+R3014172,2026-11-14 23:15,西乙,皇家社会B队,希洪竞技,0.25,观望,主,观望,0.5,3,1.5,"Rule 19, Rule-P2, Rule 23, Rule 11, Rule 21",观望,观望 ⭐½（1.5星）,,,,T-10
